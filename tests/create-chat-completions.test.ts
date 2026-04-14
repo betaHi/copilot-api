@@ -189,3 +189,33 @@ test("uses COPILOT_REASONING_EFFORT from Claude settings.json", async () => {
     await rm(tempHome, { recursive: true, force: true })
   }
 })
+
+test("omits reasoning_effort for GPT-5 family tool calls", async () => {
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "gpt-5.4",
+    max_tokens: 128,
+    reasoning_effort: "high",
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "lookup_weather",
+          parameters: {
+            type: "object",
+            properties: {},
+          },
+        },
+      },
+    ],
+  }
+
+  await createChatCompletions(payload)
+
+  const body = JSON.parse(
+    (fetchMock.mock.calls[0][1] as { body: string }).body,
+  ) as Record<string, unknown>
+
+  expect(body.reasoning_effort).toBeUndefined()
+  expect(body.max_completion_tokens).toBe(128)
+})

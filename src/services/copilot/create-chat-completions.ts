@@ -41,11 +41,21 @@ const buildRequestPayload = (
   payload: ChatCompletionsPayload,
   claudeSettingsEnv: Record<string, string>,
 ): ChatCompletionsRequestPayload => {
-  const reasoningEffort =
+  const requestedReasoningEffort =
     payload.reasoning_effort
     ?? normalizeReasoningEffort(process.env.COPILOT_REASONING_EFFORT)
     ?? normalizeReasoningEffort(claudeSettingsEnv.COPILOT_REASONING_EFFORT)
     ?? defaultReasoningEffort(payload.model)
+
+  const reasoningEffort =
+    (
+      usesMaxCompletionTokens(payload.model)
+      && payload.tools !== null
+      && payload.tools !== undefined
+      && payload.tools.length > 0
+    ) ?
+      undefined
+    : requestedReasoningEffort
 
   if (
     !usesMaxCompletionTokens(payload.model)
