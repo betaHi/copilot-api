@@ -1,8 +1,9 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "copilot-api",
+      "name": "betahi-copilot-api",
       "dependencies": {
         "citty": "^0.1.6",
         "clipboardy": "^5.0.0",

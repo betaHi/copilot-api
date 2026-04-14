@@ -1,3 +1,4 @@
+import { resolveModelId } from "~/lib/models"
 import {
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
@@ -40,20 +41,69 @@ export function translateToOpenAI(
     stream: payload.stream,
     temperature: payload.temperature,
     top_p: payload.top_p,
+    reasoning_effort: translateReasoningEffort(payload),
     user: payload.metadata?.user_id,
     tools: translateAnthropicToolsToOpenAI(payload.tools),
     tool_choice: translateAnthropicToolChoiceToOpenAI(payload.tool_choice),
   }
 }
 
-function translateModelName(model: string): string {
-  // Subagent requests use a specific model number which Copilot doesn't support
-  if (model.startsWith("claude-sonnet-4-")) {
-    return model.replace(/^claude-sonnet-4-.*/, "claude-sonnet-4")
-  } else if (model.startsWith("claude-opus-")) {
-    return model.replace(/^claude-opus-4-.*/, "claude-opus-4")
+function translateReasoningEffort(
+  payload: AnthropicMessagesPayload,
+): ChatCompletionsPayload["reasoning_effort"] {
+  if (payload.reasoning_effort) {
+    return normalizeReasoningEffort(payload.reasoning_effort)
   }
-  return model
+
+  if (payload.thinking?.type !== "enabled") {
+    return undefined
+  }
+
+  const budgetTokens = payload.thinking.budget_tokens
+  if (budgetTokens === undefined) {
+    return "medium"
+  }
+
+  if (budgetTokens <= 2_048) {
+    return "low"
+  }
+
+  if (budgetTokens <= 8_192) {
+    return "medium"
+  }
+
+  if (budgetTokens <= 24_576) {
+    return "high"
+  }
+
+  return "max"
+}
+
+function normalizeReasoningEffort(
+  value: string,
+): ChatCompletionsPayload["reasoning_effort"] {
+  switch (value.toLowerCase()) {
+    case "low": {
+      return "low"
+    }
+    case "medium": {
+      return "medium"
+    }
+    case "high": {
+      return "high"
+    }
+    case "xhigh":
+    case "max": {
+      return "max"
+    }
+    default: {
+      return undefined
+    }
+  }
+}
+
+function translateModelName(model: string): string {
+  return resolveModelId(model)
 }
 
 function translateAnthropicMessagesToOpenAI(

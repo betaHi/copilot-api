@@ -2,8 +2,37 @@ import { describe, test, expect } from "bun:test"
 import { z } from "zod"
 
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
+import type { ModelsResponse } from "~/services/copilot/get-models"
+
+import { state } from "~/lib/state"
 
 import { translateToOpenAI } from "../src/routes/messages/non-stream-translation"
+
+const originalModels = state.models
+
+function createModel(
+  id: string,
+  options?: Partial<ModelsResponse["data"][number]>,
+) {
+  return {
+    capabilities: {
+      family: id,
+      limits: {},
+      object: "chat.completion",
+      supports: {},
+      tokenizer: "o200k_base",
+      type: "chat",
+    },
+    id,
+    model_picker_enabled: true,
+    name: id,
+    object: "model",
+    preview: false,
+    vendor: "openai",
+    version: "1",
+    ...options,
+  }
+}
 
 // Zod schema for a single message in the chat completion request.
 const messageSchema = z.object({
@@ -63,7 +92,76 @@ function isValidChatCompletionRequest(payload: unknown): boolean {
 }
 
 describe("Anthropic to OpenAI translation logic", () => {
+  test("should resolve GPT-5 family aliases to a supported Copilot model", () => {
+    state.models = {
+      object: "list",
+      data: [createModel("gpt-5"), createModel("gpt-5-mini")],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "gpt-5.4",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.model).toBe("gpt-5")
+  })
+
+  test("should resolve Claude snapshot aliases to the base Copilot model", () => {
+    state.models = {
+      object: "list",
+      data: [createModel("claude-opus-4")],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "claude-opus-4-20260110",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.model).toBe("claude-opus-4")
+  })
+
+  test("should map Anthropic thinking budget to GPT reasoning effort", () => {
+    state.models = originalModels
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "gpt-5.4",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+      thinking: {
+        type: "enabled",
+        budget_tokens: 10_000,
+      },
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.reasoning_effort).toBe("high")
+  })
+
+  test("should honor explicit reasoning effort aliases", () => {
+    state.models = originalModels
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "gpt-5.4",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+      reasoning_effort: "xhigh",
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.reasoning_effort).toBe("max")
+  })
+
   test("should translate minimal Anthropic payload to valid OpenAI payload", () => {
+    state.models = originalModels
+
     const anthropicPayload: AnthropicMessagesPayload = {
       model: "gpt-4o",
       messages: [{ role: "user", content: "Hello!" }],
@@ -75,6 +173,8 @@ describe("Anthropic to OpenAI translation logic", () => {
   })
 
   test("should translate comprehensive Anthropic payload to valid OpenAI payload", () => {
+    state.models = originalModels
+
     const anthropicPayload: AnthropicMessagesPayload = {
       model: "gpt-4o",
       system: "You are a helpful assistant.",
@@ -104,6 +204,8 @@ describe("Anthropic to OpenAI translation logic", () => {
   })
 
   test("should handle missing fields gracefully", () => {
+    state.models = originalModels
+
     const anthropicPayload: AnthropicMessagesPayload = {
       model: "gpt-4o",
       messages: [{ role: "user", content: "Hello!" }],
@@ -114,6 +216,8 @@ describe("Anthropic to OpenAI translation logic", () => {
   })
 
   test("should handle invalid types in Anthropic payload", () => {
+    state.models = originalModels
+
     const anthropicPayload = {
       model: "gpt-4o",
       messages: [{ role: "user", content: "Hello!" }],
@@ -126,6 +230,8 @@ describe("Anthropic to OpenAI translation logic", () => {
   })
 
   test("should handle thinking blocks in assistant messages", () => {
+    state.models = originalModels
+
     const anthropicPayload: AnthropicMessagesPayload = {
       model: "claude-3-5-sonnet-20241022",
       messages: [
@@ -157,6 +263,8 @@ describe("Anthropic to OpenAI translation logic", () => {
   })
 
   test("should handle thinking blocks with tool calls", () => {
+    state.models = originalModels
+
     const anthropicPayload: AnthropicMessagesPayload = {
       model: "claude-3-5-sonnet-20241022",
       messages: [
@@ -198,6 +306,8 @@ describe("Anthropic to OpenAI translation logic", () => {
     expect(assistantMessage?.tool_calls?.[0].function.name).toBe("get_weather")
   })
 })
+
+state.models = originalModels
 
 describe("OpenAI Chat Completion v1 Request Payload Validation with Zod", () => {
   test("should return true for a minimal valid request payload", () => {

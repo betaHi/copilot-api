@@ -1,19 +1,19 @@
 {
-  "name": "copilot-api",
+  "name": "betahi-copilot-api",
   "version": "0.7.0",
-  "description": "Turn GitHub Copilot into OpenAI/Anthropic API compatible server. Usable with Claude Code!",
+  "description": "Fork of copilot-api with GPT-5.4 and reasoning effort support for Claude Code.",
   "keywords": [
     "proxy",
     "github-copilot",
     "openai-compatible"
   ],
-  "homepage": "https://github.com/ericc-ch/copilot-api",
-  "bugs": "https://github.com/ericc-ch/copilot-api/issues",
+  "homepage": "https://github.com/betaHi/copilot-api",
+  "bugs": "https://github.com/betaHi/copilot-api/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ericc-ch/copilot-api.git"
+    "url": "git+https://github.com/betaHi/copilot-api.git"
   },
-  "author": "Erick Christian <erickchristian48@gmail.com>",
+  "author": "betaHi",
   "type": "module",
   "bin": {
     "copilot-api": "./dist/main.js"

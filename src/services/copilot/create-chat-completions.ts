@@ -2,8 +2,68 @@ import consola from "consola"
 import { events } from "fetch-event-stream"
 
 import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
+import { getClaudeSettingsEnv } from "~/lib/claude-settings"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
+
+const usesMaxCompletionTokens = (modelId: string): boolean =>
+  modelId.startsWith("gpt-5")
+
+const defaultReasoningEffort = (
+  modelId: string,
+): ChatCompletionsPayload["reasoning_effort"] =>
+  usesMaxCompletionTokens(modelId) ? "medium" : undefined
+
+const normalizeReasoningEffort = (
+  value: string | undefined | null,
+): ChatCompletionsPayload["reasoning_effort"] => {
+  switch (value?.toLowerCase()) {
+    case "low": {
+      return "low"
+    }
+    case "medium": {
+      return "medium"
+    }
+    case "high": {
+      return "high"
+    }
+    case "xhigh":
+    case "max": {
+      return "max"
+    }
+    default: {
+      return undefined
+    }
+  }
+}
+
+const buildRequestPayload = (
+  payload: ChatCompletionsPayload,
+  claudeSettingsEnv: Record<string, string>,
+): ChatCompletionsRequestPayload => {
+  const reasoningEffort =
+    payload.reasoning_effort
+    ?? normalizeReasoningEffort(process.env.COPILOT_REASONING_EFFORT)
+    ?? normalizeReasoningEffort(claudeSettingsEnv.COPILOT_REASONING_EFFORT)
+    ?? defaultReasoningEffort(payload.model)
+
+  if (
+    !usesMaxCompletionTokens(payload.model)
+    || payload.max_tokens === null
+    || payload.max_tokens === undefined
+  ) {
+    return reasoningEffort === null || reasoningEffort === undefined ?
+        payload
+      : { ...payload, reasoning_effort: reasoningEffort }
+  }
+
+  return {
+    ...payload,
+    max_tokens: undefined,
+    max_completion_tokens: payload.max_tokens,
+    reasoning_effort: reasoningEffort,
+  }
+}
 
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
@@ -28,10 +88,13 @@ export const createChatCompletions = async (
     "X-Initiator": isAgentCall ? "agent" : "user",
   }
 
+  const claudeSettingsEnv = await getClaudeSettingsEnv()
+  const requestPayload = buildRequestPayload(payload, claudeSettingsEnv)
+
   const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(requestPayload),
   })
 
   if (!response.ok) {
@@ -130,6 +193,7 @@ export interface ChatCompletionsPayload {
   temperature?: number | null
   top_p?: number | null
   max_tokens?: number | null
+  reasoning_effort?: "low" | "medium" | "high" | "max" | null
   stop?: string | Array<string> | null
   n?: number | null
   stream?: boolean | null
@@ -148,6 +212,14 @@ export interface ChatCompletionsPayload {
     | { type: "function"; function: { name: string } }
     | null
   user?: string | null
+}
+
+type ChatCompletionsRequestPayload = Omit<
+  ChatCompletionsPayload,
+  "max_tokens"
+> & {
+  max_tokens?: number | null
+  max_completion_tokens?: number | null
 }
 
 export interface Tool {

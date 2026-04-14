@@ -33,6 +33,7 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 
 - **OpenAI & Anthropic Compatibility**: Exposes GitHub Copilot as an OpenAI-compatible (`/v1/chat/completions`, `/v1/models`, `/v1/embeddings`) and Anthropic-compatible (`/v1/messages`) API.
 - **Claude Code Integration**: Easily configure and launch [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) to use Copilot as its backend with a simple command-line flag (`--claude-code`).
+- **GPT-5 Reasoning Effort Support**: Supports GPT-5 family reasoning controls through `reasoning_effort` and the `COPILOT_REASONING_EFFORT` environment variable (`low`, `medium`, `high`, `max`; `xhigh` is accepted as an alias for `max`).
 - **Usage Dashboard**: A web-based dashboard to monitor your Copilot API usage, view quotas, and see detailed statistics.
 - **Rate Limit Control**: Manage API usage with rate-limiting options (`--rate-limit`) and a waiting mechanism (`--wait`) to prevent errors from rapid requests.
 - **Manual Request Approval**: Manually approve or deny each API request for fine-grained control over usage (`--manual`).
@@ -121,19 +122,19 @@ The Docker image includes:
 You can run the project directly using npx:
 
 ```sh
-npx copilot-api@latest start
+npx betahi-copilot-api@latest start
 ```
 
 With options:
 
 ```sh
-npx copilot-api@latest start --port 8080
+npx betahi-copilot-api@latest start --port 8080
 ```
 
 For authentication only:
 
 ```sh
-npx copilot-api@latest auth
+npx betahi-copilot-api@latest auth
 ```
 
 ## Command Structure
@@ -211,50 +212,154 @@ New endpoints for monitoring your Copilot usage and quotas.
 
 ## Example Usage
 
+### GPT-5 Reasoning Effort
+
+When using GPT-5 family models, you can force the reasoning effort used for upstream Copilot requests by setting:
+
+```sh
+COPILOT_REASONING_EFFORT=high
+```
+
+The proxy normalizes effort values as follows:
+
+| Claude Code / Anthropic side | Copilot / GPT-5 side |
+| ---------------------------- | -------------------- |
+| `low`                        | `low`                |
+| `medium`                     | `medium`             |
+| `high`                       | `high`               |
+| `max`                        | `max`                |
+| `xhigh`                      | `max`                |
+
+For user-facing configuration, prefer `xhigh` if you want to match the Claude Code UI label exactly. The proxy will normalize `xhigh` to GPT-5 `max` automatically.
+
+You can control this in three ways:
+
+1. Set `COPILOT_REASONING_EFFORT` in the server environment.
+2. Set `COPILOT_REASONING_EFFORT` inside Claude Code `settings.json` under `env`.
+3. Send `reasoning_effort` in the Anthropic-compatible `/v1/messages` payload.
+4. Send `thinking.budget_tokens` in the Anthropic-compatible `/v1/messages` payload, which will be mapped automatically.
+
+When `thinking.budget_tokens` is used, the proxy maps it like this:
+
+| `thinking.budget_tokens` | Mapped `reasoning_effort` |
+| ------------------------ | ------------------------- |
+| `<= 2048`                | `low`                     |
+| `2049 - 8192`            | `medium`                  |
+| `8193 - 24576`           | `high`                    |
+| `> 24576`                | `max`                     |
+
+### Default Behavior
+
+There are two different defaults to keep in mind:
+
+| Layer | Default |
+| ----- | ------- |
+| Claude Code UI | Usually `Medium` in the current UI |
+| This proxy | `medium` for GPT-5 family models |
+
+So the effective behavior is:
+
+1. If you explicitly set `COPILOT_REASONING_EFFORT`, that wins.
+2. Else if `COPILOT_REASONING_EFFORT` is present in Claude Code `settings.json`, the proxy uses that value.
+3. Else if Claude Code sends `reasoning_effort`, the proxy forwards it.
+4. Else if Claude Code sends `thinking` with no `budget_tokens`, the proxy uses `medium`.
+5. Else for GPT-5 family models, the proxy defaults to `medium`.
+
+### Using Claude Code `settings.json`
+
+Your Claude Code `settings.json` can configure the proxy endpoint and the default model selection, for example in `~/.claude/settings.json`.
+
+It is a good place to set:
+
+| Setting | Purpose |
+| ------- | ------- |
+| `ANTHROPIC_BASE_URL` | Point Claude Code to this proxy |
+| `ANTHROPIC_AUTH_TOKEN` | Dummy token for local proxy auth |
+| `ANTHROPIC_MODEL` | Default main model |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Default sonnet-style model alias |
+| `ANTHROPIC_SMALL_FAST_MODEL` | Default small/fast model |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Default haiku-style model alias |
+| `COPILOT_REASONING_EFFORT` | Default GPT-5 reasoning effort for this proxy |
+
+Example:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:4141",
+    "ANTHROPIC_AUTH_TOKEN": "dummy",
+    "ANTHROPIC_MODEL": "gpt-5.4",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.4",
+    "ANTHROPIC_SMALL_FAST_MODEL": "gpt-5.4",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5.4",
+    "COPILOT_REASONING_EFFORT": "medium",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  }
+}
+```
+
+For reasoning effort specifically:
+
+1. You can set `COPILOT_REASONING_EFFORT` in `~/.claude/settings.json` or project-level `.claude/settings.json`.
+2. Supported values are `low`, `medium`, `high`, and `xhigh`. `xhigh` is normalized to GPT-5 `max`.
+3. If Claude Code sends `reasoning_effort`, the proxy will honor it.
+4. If Claude Code sends `thinking.budget_tokens`, the proxy will map that to the matching GPT-5 effort.
+5. If nothing is configured, the proxy now defaults GPT-5 family models to `medium`.
+
+So with a `settings.json` like the example above, GPT-5.4 will effectively run at `medium` by default even without any extra effort setting.
+
+If the Anthropic-compatible `/v1/messages` payload includes `reasoning_effort` or `thinking.budget_tokens`, the proxy will map that to GPT-5 `reasoning_effort` automatically.
+
+Example:
+
+```sh
+COPILOT_REASONING_EFFORT=medium bun run ./src/main.ts start --claude-code
+```
+
 Using with npx:
 
 ```sh
 # Basic usage with start command
-npx copilot-api@latest start
+npx betahi-copilot-api@latest start
 
 # Run on custom port with verbose logging
-npx copilot-api@latest start --port 8080 --verbose
+npx betahi-copilot-api@latest start --port 8080 --verbose
 
 # Use with a business plan GitHub account
-npx copilot-api@latest start --account-type business
+npx betahi-copilot-api@latest start --account-type business
 
 # Use with an enterprise plan GitHub account
-npx copilot-api@latest start --account-type enterprise
+npx betahi-copilot-api@latest start --account-type enterprise
 
 # Enable manual approval for each request
-npx copilot-api@latest start --manual
+npx betahi-copilot-api@latest start --manual
 
 # Set rate limit to 30 seconds between requests
-npx copilot-api@latest start --rate-limit 30
+npx betahi-copilot-api@latest start --rate-limit 30
 
 # Wait instead of error when rate limit is hit
-npx copilot-api@latest start --rate-limit 30 --wait
+npx betahi-copilot-api@latest start --rate-limit 30 --wait
 
 # Provide GitHub token directly
-npx copilot-api@latest start --github-token ghp_YOUR_TOKEN_HERE
+npx betahi-copilot-api@latest start --github-token ghp_YOUR_TOKEN_HERE
 
 # Run only the auth flow
-npx copilot-api@latest auth
+npx betahi-copilot-api@latest auth
 
 # Run auth flow with verbose logging
-npx copilot-api@latest auth --verbose
+npx betahi-copilot-api@latest auth --verbose
 
 # Show your Copilot usage/quota in the terminal (no server needed)
-npx copilot-api@latest check-usage
+npx betahi-copilot-api@latest check-usage
 
 # Display debug information for troubleshooting
-npx copilot-api@latest debug
+npx betahi-copilot-api@latest debug
 
 # Display debug information in JSON format
-npx copilot-api@latest debug --json
+npx betahi-copilot-api@latest debug --json
 
 # Initialize proxy from environment variables (HTTP_PROXY, HTTPS_PROXY, etc.)
-npx copilot-api@latest start --proxy-env
+npx betahi-copilot-api@latest start --proxy-env
 ```
 
 ## Using the Usage Viewer
@@ -263,7 +368,7 @@ After starting the server, a URL to the Copilot Usage Dashboard will be displaye
 
 1.  Start the server. For example, using npx:
     ```sh
-    npx copilot-api@latest start
+    npx betahi-copilot-api@latest start
     ```
 2.  The server will output a URL to the usage viewer. Copy and paste this URL into your browser. It will look something like this:
     `https://ericc-ch.github.io/copilot-api?endpoint=http://localhost:4141/usage`
@@ -289,7 +394,7 @@ There are two ways to configure Claude Code to use this proxy:
 To get started, run the `start` command with the `--claude-code` flag:
 
 ```sh
-npx copilot-api@latest start --claude-code
+npx betahi-copilot-api@latest start --claude-code
 ```
 
 You will be prompted to select a primary model and a "small, fast" model for background tasks. After selecting the models, a command will be copied to your clipboard. This command sets the necessary environment variables for Claude Code to use the proxy.
