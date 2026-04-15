@@ -63,6 +63,48 @@ const pickBestModel = (models: Array<Model>): Model | undefined => {
   )[0]
 }
 
+const getBestPrefixMatches = (
+  models: Array<Model>,
+  aliasCandidates: Array<string>,
+): Array<Model> => {
+  let bestMatchLength = 0
+  const matches: Array<Model> = []
+
+  for (const model of models) {
+    const normalizedModelId = normalizeModelId(model.id)
+    const matchedAliasLength = Math.max(
+      0,
+      ...aliasCandidates.map((candidate) => {
+        const normalizedCandidate = normalizeModelId(candidate)
+
+        return (
+            normalizedCandidate.length >= 4
+              && normalizedModelId.startsWith(normalizedCandidate)
+          ) ?
+            normalizedCandidate.length
+          : 0
+      }),
+    )
+
+    if (matchedAliasLength === 0) {
+      continue
+    }
+
+    if (matchedAliasLength > bestMatchLength) {
+      bestMatchLength = matchedAliasLength
+      matches.length = 0
+      matches.push(model)
+      continue
+    }
+
+    if (matchedAliasLength === bestMatchLength) {
+      matches.push(model)
+    }
+  }
+
+  return matches
+}
+
 export const resolveModel = (
   requestedModelId: string,
   models: Array<Model> | undefined = state.models?.data,
@@ -88,18 +130,7 @@ export const resolveModel = (
     return pickBestModel(normalizedExactMatches)
   }
 
-  const familyPrefixMatches = models.filter((model) => {
-    const normalizedModelId = normalizeModelId(model.id)
-
-    return aliasCandidates.some((candidate) => {
-      const normalizedCandidate = normalizeModelId(candidate)
-
-      return (
-        normalizedCandidate.length >= 4
-        && normalizedModelId.startsWith(normalizedCandidate)
-      )
-    })
-  })
+  const familyPrefixMatches = getBestPrefixMatches(models, aliasCandidates)
 
   return pickBestModel(familyPrefixMatches)
 }

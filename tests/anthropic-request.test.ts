@@ -91,7 +91,7 @@ function isValidChatCompletionRequest(payload: unknown): boolean {
   return result.success
 }
 
-describe("Anthropic to OpenAI translation logic", () => {
+describe("Anthropic model resolution", () => {
   test("should resolve GPT-5 family aliases to a supported Copilot model", () => {
     state.models = {
       object: "list",
@@ -126,6 +126,48 @@ describe("Anthropic to OpenAI translation logic", () => {
     expect(openAIPayload.model).toBe("claude-opus-4")
   })
 
+  test("should resolve Gemini 3.1 Pro alias to the preview Copilot model", () => {
+    state.models = {
+      object: "list",
+      data: [
+        createModel("gemini-3.1-pro-preview"),
+        createModel("gemini-3-flash-preview"),
+      ],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "gemini-3.1-pro",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.model).toBe("gemini-3.1-pro-preview")
+  })
+
+  test("should resolve Gemini 3 Flash alias to the flash preview model", () => {
+    state.models = {
+      object: "list",
+      data: [
+        createModel("gemini-3.1-pro-preview"),
+        createModel("gemini-3-flash-preview"),
+      ],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "gemini-3-flash",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.model).toBe("gemini-3-flash-preview")
+  })
+})
+
+describe("Anthropic to OpenAI translation logic", () => {
   test("should map Anthropic thinking budget to GPT reasoning effort", () => {
     state.models = originalModels
 

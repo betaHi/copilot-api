@@ -210,13 +210,17 @@ New endpoints for monitoring your Copilot usage and quotas.
 | `GET /usage` | `GET`  | Get detailed Copilot usage statistics and quota information. |
 | `GET /token` | `GET`  | Get the current Copilot token being used by the API.         |
 
-## **GPT Support**
+## **GPT and Gemini Support**
 
 | Model | Status | Notes |
 | ----- | ------ | ----- |
 | `gpt-5.4` | Supported | Uses the standard GPT-5 chat/completions path. |
 | `gpt-5.3-codex` | Supported | Uses the Responses API bridge internally. |
 | `gpt-5.4-mini` | Supported | Uses the Responses API bridge internally. |
+| `gemini-3.1-pro` | Supported | Resolves to Copilot's current `gemini-3.1-pro-preview` model. |
+| `gemini-3-flash` | Supported | Resolves to Copilot's current `gemini-3-flash-preview` model. |
+
+Gemini preview IDs can also be used directly, for example `gemini-3.1-pro-preview` and `gemini-3-flash-preview`.
 
 ### Reasoning Effort Matrix
 

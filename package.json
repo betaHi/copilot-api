@@ -1,7 +1,7 @@
 {
   "name": "betahi-copilot-api",
   "version": "0.7.2",
-  "description": "Fork of copilot-api with GPT-5.4 and reasoning effort support for Claude Code.",
+  "description": "GitHub Copilot proxy with OpenAI/Anthropic compatibility, GPT-5 and Gemini support for Claude Code.",
   "keywords": [
     "proxy",
     "github-copilot",
@@ -54,6 +54,7 @@
   },
   "devDependencies": {
     "@echristian/eslint-config": "^0.0.54",
+    "@eslint/markdown": "^8.0.1",
     "@types/bun": "^1.2.23",
     "@types/proxy-from-env": "^1.0.4",
     "bumpp": "^10.2.3",
