@@ -210,76 +210,29 @@ New endpoints for monitoring your Copilot usage and quotas.
 | `GET /usage` | `GET`  | Get detailed Copilot usage statistics and quota information. |
 | `GET /token` | `GET`  | Get the current Copilot token being used by the API.         |
 
-## Example Usage
+## **GPT Support**
 
-### GPT-5 Reasoning Effort
+| Model | Status | Notes |
+| ----- | ------ | ----- |
+| `gpt-5.4` | Supported | Uses the standard GPT-5 chat/completions path. |
+| `gpt-5.3-codex` | Supported | Uses the Responses API bridge internally. |
+| `gpt-5.4-mini` | Supported | Uses the Responses API bridge internally. |
 
-When using GPT-5 family models, you can force the reasoning effort used for upstream Copilot requests by setting:
+### Reasoning Effort Matrix
 
-```sh
-COPILOT_REASONING_EFFORT=high
-```
+Reasoning effort is model-specific.
 
-The proxy normalizes effort values as follows:
+| Model | Supported values | Default |
+| ----- | ---------------- | ------- |
+| `gpt-5.4` | `low`, `medium`, `high`, `xhigh` | `medium` |
+| `gpt-5.3-codex` | `low`, `medium`, `high`, `xhigh` | `medium` |
+| `gpt-5.4-mini` | `none`, `low`, `medium` | `medium` |
 
-| Claude Code / Anthropic side | Copilot / GPT-5 side |
-| ---------------------------- | -------------------- |
-| `low`                        | `low`                |
-| `medium`                     | `medium`             |
-| `high`                       | `high`               |
-| `max`                        | `max`                |
-| `xhigh`                      | `max`                |
+If an unsupported effort value is sent for one of these models, the proxy falls back to that model's default `medium` instead of forwarding an invalid upstream request.
 
-For user-facing configuration, prefer `xhigh` if you want to match the Claude Code UI label exactly. The proxy will normalize `xhigh` to GPT-5 `max` automatically.
+### `settings.json`
 
-You can control this in three ways:
-
-1. Set `COPILOT_REASONING_EFFORT` in the server environment.
-2. Set `COPILOT_REASONING_EFFORT` inside Claude Code `settings.json` under `env`.
-3. Send `reasoning_effort` in the Anthropic-compatible `/v1/messages` payload.
-4. Send `thinking.budget_tokens` in the Anthropic-compatible `/v1/messages` payload, which will be mapped automatically.
-
-When `thinking.budget_tokens` is used, the proxy maps it like this:
-
-| `thinking.budget_tokens` | Mapped `reasoning_effort` |
-| ------------------------ | ------------------------- |
-| `<= 2048`                | `low`                     |
-| `2049 - 8192`            | `medium`                  |
-| `8193 - 24576`           | `high`                    |
-| `> 24576`                | `max`                     |
-
-### Default Behavior
-
-There are two different defaults to keep in mind:
-
-| Layer | Default |
-| ----- | ------- |
-| Claude Code UI | Usually `Medium` in the current UI |
-| This proxy | `medium` for GPT-5 family models |
-
-So the effective behavior is:
-
-1. If you explicitly set `COPILOT_REASONING_EFFORT`, that wins.
-2. Else if `COPILOT_REASONING_EFFORT` is present in Claude Code `settings.json`, the proxy uses that value.
-3. Else if Claude Code sends `reasoning_effort`, the proxy forwards it.
-4. Else if Claude Code sends `thinking` with no `budget_tokens`, the proxy uses `medium`.
-5. Else for GPT-5 family models, the proxy defaults to `medium`.
-
-### Using Claude Code `settings.json`
-
-Your Claude Code `settings.json` can configure the proxy endpoint and the default model selection, for example in `~/.claude/settings.json`.
-
-It is a good place to set:
-
-| Setting | Purpose |
-| ------- | ------- |
-| `ANTHROPIC_BASE_URL` | Point Claude Code to this proxy |
-| `ANTHROPIC_AUTH_TOKEN` | Dummy token for local proxy auth |
-| `ANTHROPIC_MODEL` | Default main model |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Default sonnet-style model alias |
-| `ANTHROPIC_SMALL_FAST_MODEL` | Default small/fast model |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Default haiku-style model alias |
-| `COPILOT_REASONING_EFFORT` | Default GPT-5 reasoning effort for this proxy |
+Your Claude Code `settings.json` can configure the proxy endpoint and default model selection, for example in `~/.claude/settings.json`.
 
 Example:
 
@@ -288,33 +241,25 @@ Example:
   "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:4141",
     "ANTHROPIC_AUTH_TOKEN": "dummy",
-    "ANTHROPIC_MODEL": "gpt-5.4",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.4",
-    "ANTHROPIC_SMALL_FAST_MODEL": "gpt-5.4",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5.4",
+    "ANTHROPIC_MODEL": "gpt-5.3-codex",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.3-codex",
+    "ANTHROPIC_SMALL_FAST_MODEL": "gpt-5.4-mini",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5.4-mini",
     "COPILOT_REASONING_EFFORT": "medium",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
-  }
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1"
+  },
+  "model": "gpt-5.3-codex"
 }
 ```
 
-For reasoning effort specifically:
+Notes:
 
-1. You can set `COPILOT_REASONING_EFFORT` in `~/.claude/settings.json` or project-level `.claude/settings.json`.
-2. Supported values are `low`, `medium`, `high`, and `xhigh`. `xhigh` is normalized to GPT-5 `max`.
-3. If Claude Code sends `reasoning_effort`, the proxy will honor it.
-4. If Claude Code sends `thinking.budget_tokens`, the proxy will map that to the matching GPT-5 effort.
-5. If nothing is configured, the proxy now defaults GPT-5 family models to `medium`.
+1. `COPILOT_REASONING_EFFORT` is currently a global default, not a per-model setting.
+2. Claude Code's top-level `model` field is interpreted by Claude Code itself, not by this proxy.
+3. For one-off validation, `claude --model <model>` is the most reliable way to force the active session model.
 
-So with a `settings.json` like the example above, GPT-5.4 will effectively run at `medium` by default even without any extra effort setting.
-
-If the Anthropic-compatible `/v1/messages` payload includes `reasoning_effort` or `thinking.budget_tokens`, the proxy will map that to GPT-5 `reasoning_effort` automatically.
-
-Example:
-
-```sh
-COPILOT_REASONING_EFFORT=medium bun run ./src/main.ts start --claude-code
-```
+## Example Usage
 
 Using with npx:
 

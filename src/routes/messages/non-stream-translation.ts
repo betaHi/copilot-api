@@ -1,5 +1,6 @@
 import { resolveModelId } from "~/lib/models"
 import {
+  sanitizeReasoningEffortForModel,
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
   type ContentPart,
@@ -51,8 +52,13 @@ export function translateToOpenAI(
 function translateReasoningEffort(
   payload: AnthropicMessagesPayload,
 ): ChatCompletionsPayload["reasoning_effort"] {
+  const modelId = translateModelName(payload.model)
+
   if (payload.reasoning_effort) {
-    return normalizeReasoningEffort(payload.reasoning_effort)
+    return sanitizeReasoningEffortForModel(
+      modelId,
+      normalizeReasoningEffort(payload.reasoning_effort),
+    )
   }
 
   if (payload.thinking?.type !== "enabled") {
@@ -73,16 +79,19 @@ function translateReasoningEffort(
   }
 
   if (budgetTokens <= 24_576) {
-    return "high"
+    return sanitizeReasoningEffortForModel(modelId, "high")
   }
 
-  return "max"
+  return sanitizeReasoningEffortForModel(modelId, "xhigh")
 }
 
 function normalizeReasoningEffort(
   value: string,
 ): ChatCompletionsPayload["reasoning_effort"] {
   switch (value.toLowerCase()) {
+    case "none": {
+      return "none"
+    }
     case "low": {
       return "low"
     }
@@ -92,7 +101,9 @@ function normalizeReasoningEffort(
     case "high": {
       return "high"
     }
-    case "xhigh":
+    case "xhigh": {
+      return "xhigh"
+    }
     case "max": {
       return "max"
     }

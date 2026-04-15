@@ -6,18 +6,81 @@ import { getClaudeSettingsEnv } from "~/lib/claude-settings"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 
+import {
+  buildResponsesRequestPayload,
+  shouldUseResponsesApiForModel,
+  translateResponsesStreamToChatCompletionStream,
+  translateResponsesToChatCompletion,
+  type ResponsesApiResponse,
+  type ResponsesReasoningEffort,
+} from "./responses"
+
 const usesMaxCompletionTokens = (modelId: string): boolean =>
   modelId.startsWith("gpt-5")
+
+// Copilot rejects user identifiers longer than 64 characters.
+const MAX_USER_LENGTH = 64
 
 const defaultReasoningEffort = (
   modelId: string,
 ): ChatCompletionsPayload["reasoning_effort"] =>
   usesMaxCompletionTokens(modelId) ? "medium" : undefined
 
+const getAllowedReasoningEfforts = (
+  modelId: string,
+): Array<
+  Exclude<ChatCompletionsPayload["reasoning_effort"], null | undefined>
+> => {
+  if (modelId.startsWith("gpt-5.4-mini")) {
+    return ["none", "low", "medium"]
+  }
+
+  if (modelId.startsWith("gpt-5.4") || modelId.startsWith("gpt-5.3-codex")) {
+    return ["low", "medium", "high", "xhigh"]
+  }
+
+  if (usesMaxCompletionTokens(modelId)) {
+    return ["low", "medium", "high", "xhigh"]
+  }
+
+  return []
+}
+
+export const sanitizeReasoningEffortForModel = (
+  modelId: string,
+  reasoningEffort: ChatCompletionsPayload["reasoning_effort"],
+): ChatCompletionsPayload["reasoning_effort"] => {
+  if (!reasoningEffort) {
+    return undefined
+  }
+
+  return getAllowedReasoningEfforts(modelId).includes(reasoningEffort) ?
+      reasoningEffort
+    : undefined
+}
+
+const getRequestedReasoningEffort = (
+  payload: ChatCompletionsPayload,
+  claudeSettingsEnv: Record<string, string>,
+): ChatCompletionsPayload["reasoning_effort"] => {
+  const requestedReasoningEffort =
+    payload.reasoning_effort
+    ?? normalizeReasoningEffort(process.env.COPILOT_REASONING_EFFORT)
+    ?? normalizeReasoningEffort(claudeSettingsEnv.COPILOT_REASONING_EFFORT)
+
+  return (
+    sanitizeReasoningEffortForModel(payload.model, requestedReasoningEffort)
+    ?? defaultReasoningEffort(payload.model)
+  )
+}
+
 const normalizeReasoningEffort = (
   value: string | undefined | null,
 ): ChatCompletionsPayload["reasoning_effort"] => {
   switch (value?.toLowerCase()) {
+    case "none": {
+      return "none"
+    }
     case "low": {
       return "low"
     }
@@ -27,7 +90,9 @@ const normalizeReasoningEffort = (
     case "high": {
       return "high"
     }
-    case "xhigh":
+    case "xhigh": {
+      return "xhigh"
+    }
     case "max": {
       return "max"
     }
@@ -37,15 +102,24 @@ const normalizeReasoningEffort = (
   }
 }
 
+export const sanitizeUserIdentifier = (
+  user: string | null | undefined,
+): string | undefined => {
+  if (!user) {
+    return undefined
+  }
+
+  return user.slice(0, MAX_USER_LENGTH)
+}
+
 const buildRequestPayload = (
   payload: ChatCompletionsPayload,
   claudeSettingsEnv: Record<string, string>,
 ): ChatCompletionsRequestPayload => {
-  const requestedReasoningEffort =
-    payload.reasoning_effort
-    ?? normalizeReasoningEffort(process.env.COPILOT_REASONING_EFFORT)
-    ?? normalizeReasoningEffort(claudeSettingsEnv.COPILOT_REASONING_EFFORT)
-    ?? defaultReasoningEffort(payload.model)
+  const requestedReasoningEffort = getRequestedReasoningEffort(
+    payload,
+    claudeSettingsEnv,
+  )
 
   const reasoningEffort =
     (
@@ -62,9 +136,14 @@ const buildRequestPayload = (
     || payload.max_tokens === null
     || payload.max_tokens === undefined
   ) {
+    const sanitizedPayload = {
+      ...payload,
+      user: sanitizeUserIdentifier(payload.user),
+    }
+
     return reasoningEffort === null || reasoningEffort === undefined ?
-        payload
-      : { ...payload, reasoning_effort: reasoningEffort }
+        sanitizedPayload
+      : { ...sanitizedPayload, reasoning_effort: reasoningEffort }
   }
 
   return {
@@ -72,6 +151,7 @@ const buildRequestPayload = (
     max_tokens: undefined,
     max_completion_tokens: payload.max_tokens,
     reasoning_effort: reasoningEffort,
+    user: sanitizeUserIdentifier(payload.user),
   }
 }
 
@@ -101,6 +181,10 @@ export const createChatCompletions = async (
   const claudeSettingsEnv = await getClaudeSettingsEnv()
   const requestPayload = buildRequestPayload(payload, claudeSettingsEnv)
 
+  if (shouldUseResponsesApiForModel(payload.model)) {
+    return createResponses(payload, headers, claudeSettingsEnv)
+  }
+
   const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
     method: "POST",
     headers,
@@ -108,6 +192,10 @@ export const createChatCompletions = async (
   })
 
   if (!response.ok) {
+    if (await shouldRetryWithResponses(response)) {
+      return createResponses(payload, headers, claudeSettingsEnv)
+    }
+
     consola.error("Failed to create chat completions", response)
     throw new HTTPError("Failed to create chat completions", response)
   }
@@ -117,6 +205,52 @@ export const createChatCompletions = async (
   }
 
   return (await response.json()) as ChatCompletionResponse
+}
+
+async function createResponses(
+  payload: ChatCompletionsPayload,
+  headers: Record<string, string>,
+  claudeSettingsEnv: Record<string, string>,
+) {
+  const reasoningEffort = getRequestedReasoningEffort(
+    payload,
+    claudeSettingsEnv,
+  ) as ResponsesReasoningEffort | undefined
+
+  const response = await fetch(`${copilotBaseUrl(state)}/responses`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(
+      buildResponsesRequestPayload(payload, reasoningEffort),
+    ),
+  })
+
+  if (!response.ok) {
+    consola.error("Failed to create responses", response)
+    throw new HTTPError("Failed to create responses", response)
+  }
+
+  if (payload.stream) {
+    return translateResponsesStreamToChatCompletionStream(events(response))
+  }
+
+  return translateResponsesToChatCompletion(
+    (await response.json()) as ResponsesApiResponse,
+  )
+}
+
+async function shouldRetryWithResponses(response: Response): Promise<boolean> {
+  try {
+    const errorBody = (await response.clone().json()) as {
+      error?: {
+        code?: string
+      }
+    }
+
+    return errorBody.error?.code === "unsupported_api_for_model"
+  } catch {
+    return false
+  }
 }
 
 // Streaming types
@@ -203,7 +337,7 @@ export interface ChatCompletionsPayload {
   temperature?: number | null
   top_p?: number | null
   max_tokens?: number | null
-  reasoning_effort?: "low" | "medium" | "high" | "max" | null
+  reasoning_effort?: "none" | "low" | "medium" | "high" | "max" | "xhigh" | null
   stop?: string | Array<string> | null
   n?: number | null
   stream?: boolean | null
