@@ -156,7 +156,7 @@ describe("Anthropic to OpenAI translation logic", () => {
 
     const openAIPayload = translateToOpenAI(anthropicPayload)
 
-    expect(openAIPayload.reasoning_effort).toBe("max")
+    expect(openAIPayload.reasoning_effort).toBe("xhigh")
   })
 
   test("should translate minimal Anthropic payload to valid OpenAI payload", () => {
