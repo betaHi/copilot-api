@@ -18,6 +18,13 @@ import {
 const usesMaxCompletionTokens = (modelId: string): boolean =>
   modelId.startsWith("gpt-5")
 
+const isClaudeOpus47Model = (modelId: string): boolean =>
+  modelId === "claude-opus-4.7"
+
+type ClaudeOpus47Effort = NonNullable<
+  NonNullable<ChatCompletionsPayload["output_config"]>["effort"]
+>
+
 // Copilot rejects user identifiers longer than 64 characters.
 const MAX_USER_LENGTH = 64
 
@@ -102,6 +109,47 @@ const normalizeReasoningEffort = (
   }
 }
 
+const normalizeClaudeOpus47Effort = (
+  value: string | undefined | null,
+): ClaudeOpus47Effort | undefined => {
+  switch (value?.toLowerCase()) {
+    case "low": {
+      return "low"
+    }
+    case "medium": {
+      return "medium"
+    }
+    case "high": {
+      return "high"
+    }
+    case "xhigh": {
+      return "xhigh"
+    }
+    case "max": {
+      return "max"
+    }
+    default: {
+      return undefined
+    }
+  }
+}
+
+const getRequestedClaudeOpus47Effort = (
+  payload: ChatCompletionsPayload,
+  claudeSettingsEnv: Record<string, string>,
+): ClaudeOpus47Effort | undefined => {
+  if (!isClaudeOpus47Model(payload.model)) {
+    return undefined
+  }
+
+  return (
+    payload.output_config?.effort
+    ?? normalizeClaudeOpus47Effort(payload.reasoning_effort)
+    ?? normalizeClaudeOpus47Effort(process.env.COPILOT_REASONING_EFFORT)
+    ?? normalizeClaudeOpus47Effort(claudeSettingsEnv.COPILOT_REASONING_EFFORT)
+  )
+}
+
 export const sanitizeUserIdentifier = (
   user: string | null | undefined,
 ): string | undefined => {
@@ -117,6 +165,10 @@ const buildRequestPayload = (
   claudeSettingsEnv: Record<string, string>,
 ): ChatCompletionsRequestPayload => {
   const requestedReasoningEffort = getRequestedReasoningEffort(
+    payload,
+    claudeSettingsEnv,
+  )
+  const requestedClaudeOpus47Effort = getRequestedClaudeOpus47Effort(
     payload,
     claudeSettingsEnv,
   )
@@ -138,6 +190,17 @@ const buildRequestPayload = (
   ) {
     const sanitizedPayload = {
       ...payload,
+      output_config:
+        requestedClaudeOpus47Effort ?
+          {
+            ...payload.output_config,
+            effort: requestedClaudeOpus47Effort,
+          }
+        : payload.output_config,
+      reasoning_effort:
+        isClaudeOpus47Model(payload.model) ? undefined : (
+          payload.reasoning_effort
+        ),
       user: sanitizeUserIdentifier(payload.user),
     }
 
@@ -337,6 +400,13 @@ export interface ChatCompletionsPayload {
   temperature?: number | null
   top_p?: number | null
   max_tokens?: number | null
+  thinking?: {
+    type: "enabled" | "adaptive"
+    budget_tokens?: number
+  } | null
+  output_config?: {
+    effort?: "low" | "medium" | "high" | "xhigh" | "max"
+  } | null
   reasoning_effort?: "none" | "low" | "medium" | "high" | "max" | "xhigh" | null
   stop?: string | Array<string> | null
   n?: number | null

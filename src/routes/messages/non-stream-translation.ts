@@ -42,6 +42,8 @@ export function translateToOpenAI(
     stream: payload.stream,
     temperature: payload.temperature,
     top_p: payload.top_p,
+    thinking: translateThinking(payload),
+    output_config: translateOutputConfig(payload),
     reasoning_effort: translateReasoningEffort(payload),
     user: payload.metadata?.user_id,
     tools: translateAnthropicToolsToOpenAI(payload.tools),
@@ -49,10 +51,113 @@ export function translateToOpenAI(
   }
 }
 
+function isClaudeModel(modelId: string): boolean {
+  return modelId.startsWith("claude-")
+}
+
+function isClaudeOpus47Model(modelId: string): boolean {
+  return modelId === "claude-opus-4.7"
+}
+
+type ClaudeOpus47Effort = NonNullable<
+  NonNullable<ChatCompletionsPayload["output_config"]>["effort"]
+>
+
+function normalizeClaudeEffort(
+  value: string | undefined,
+): ClaudeOpus47Effort | undefined {
+  switch (value?.toLowerCase()) {
+    case "low": {
+      return "low"
+    }
+    case "medium": {
+      return "medium"
+    }
+    case "high": {
+      return "high"
+    }
+    case "xhigh": {
+      return "xhigh"
+    }
+    case "max": {
+      return "max"
+    }
+    default: {
+      return undefined
+    }
+  }
+}
+
+function getClaudeOpus47Effort(
+  payload: AnthropicMessagesPayload,
+): ClaudeOpus47Effort | undefined {
+  const explicitEffort = normalizeClaudeEffort(payload.reasoning_effort)
+  if (explicitEffort) {
+    return explicitEffort
+  }
+
+  if (payload.thinking?.type !== "enabled") {
+    return undefined
+  }
+
+  const budgetTokens = payload.thinking.budget_tokens
+  if (budgetTokens === undefined) {
+    return "medium"
+  }
+
+  if (budgetTokens <= 2_048) {
+    return "low"
+  }
+
+  if (budgetTokens <= 8_192) {
+    return "medium"
+  }
+
+  if (budgetTokens <= 24_576) {
+    return "high"
+  }
+
+  return "xhigh"
+}
+
+function translateThinking(
+  payload: AnthropicMessagesPayload,
+): ChatCompletionsPayload["thinking"] {
+  const modelId = translateModelName(payload.model)
+
+  if (!isClaudeOpus47Model(modelId)) {
+    return undefined
+  }
+
+  if (payload.thinking?.type === "adaptive") {
+    return { type: "adaptive" }
+  }
+
+  return payload.thinking?.type === "enabled" ? { type: "adaptive" } : undefined
+}
+
+function translateOutputConfig(
+  payload: AnthropicMessagesPayload,
+): ChatCompletionsPayload["output_config"] {
+  const modelId = translateModelName(payload.model)
+
+  if (!isClaudeOpus47Model(modelId)) {
+    return undefined
+  }
+
+  const effort = getClaudeOpus47Effort(payload)
+
+  return effort ? { effort } : undefined
+}
+
 function translateReasoningEffort(
   payload: AnthropicMessagesPayload,
 ): ChatCompletionsPayload["reasoning_effort"] {
   const modelId = translateModelName(payload.model)
+
+  if (isClaudeModel(modelId)) {
+    return undefined
+  }
 
   if (payload.reasoning_effort) {
     return sanitizeReasoningEffortForModel(

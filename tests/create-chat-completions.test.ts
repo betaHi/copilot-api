@@ -468,6 +468,46 @@ test("uses COPILOT_REASONING_EFFORT env override for GPT-5 family models", async
   expect(body.reasoning_effort).toBe("xhigh")
 })
 
+test("uses COPILOT_REASONING_EFFORT env override for claude-opus-4.7", async () => {
+  process.env.COPILOT_REASONING_EFFORT = "xhigh"
+
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "claude-opus-4.7",
+    max_tokens: 128,
+  }
+
+  await createChatCompletions(payload)
+
+  const body = JSON.parse(
+    (fetchMock.mock.calls[0][1] as { body: string }).body,
+  ) as Record<string, unknown>
+
+  expect(body.max_tokens).toBe(128)
+  expect(body.output_config).toEqual({ effort: "xhigh" })
+  expect(body.reasoning_effort).toBeUndefined()
+})
+
+test("does not apply Claude Opus 4.7 effort override to other Claude models", async () => {
+  process.env.COPILOT_REASONING_EFFORT = "xhigh"
+
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "claude-opus-4.6",
+    max_tokens: 128,
+  }
+
+  await createChatCompletions(payload)
+
+  const body = JSON.parse(
+    (fetchMock.mock.calls[0][1] as { body: string }).body,
+  ) as Record<string, unknown>
+
+  expect(body.max_tokens).toBe(128)
+  expect(body.output_config).toBeUndefined()
+  expect(body.reasoning_effort).toBeUndefined()
+})
+
 test("defaults GPT-5 family models to medium reasoning effort", async () => {
   const payload: ChatCompletionsPayload = {
     messages: [{ role: "user", content: "hi" }],
@@ -514,6 +554,42 @@ test("uses COPILOT_REASONING_EFFORT from Claude settings.json", async () => {
     ) as Record<string, unknown>
 
     expect(body.reasoning_effort).toBe("xhigh")
+  } finally {
+    await rm(tempHome, { recursive: true, force: true })
+  }
+})
+
+test("uses COPILOT_REASONING_EFFORT from Claude settings.json for claude-opus-4.7", async () => {
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), "claude-settings-"))
+  const claudeDirectory = path.join(tempHome, ".claude")
+
+  try {
+    await mkdir(claudeDirectory, { recursive: true })
+    await writeFile(
+      path.join(claudeDirectory, "settings.json"),
+      JSON.stringify({
+        env: {
+          COPILOT_REASONING_EFFORT: "max",
+        },
+      }),
+    )
+
+    process.env.HOME = tempHome
+
+    const payload: ChatCompletionsPayload = {
+      messages: [{ role: "user", content: "hi" }],
+      model: "claude-opus-4.7",
+      max_tokens: 128,
+    }
+
+    await createChatCompletions(payload)
+
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body,
+    ) as Record<string, unknown>
+
+    expect(body.output_config).toEqual({ effort: "max" })
+    expect(body.reasoning_effort).toBeUndefined()
   } finally {
     await rm(tempHome, { recursive: true, force: true })
   }

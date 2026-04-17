@@ -210,13 +210,14 @@ New endpoints for monitoring your Copilot usage and quotas.
 | `GET /usage` | `GET`  | Get detailed Copilot usage statistics and quota information. |
 | `GET /token` | `GET`  | Get the current Copilot token being used by the API.         |
 
-## **GPT and Gemini Support**
+## **GPT, Claude Opus 4.7, and Gemini Support**
 
 | Model | Status | Notes |
 | ----- | ------ | ----- |
 | `gpt-5.4` | Supported | Uses the standard GPT-5 chat/completions path. |
 | `gpt-5.3-codex` | Supported | Uses the Responses API bridge internally. |
 | `gpt-5.4-mini` | Supported | Uses the Responses API bridge internally. |
+| `claude-opus-4.7` | Supported | Snapshot aliases such as `claude-opus-4-7-20260417` resolve to this model, with `low`, `medium`, `high`, `xhigh`, and `max` effort support. |
 | `gemini-3.1-pro` | Supported | Resolves to Copilot's current `gemini-3.1-pro-preview` model. |
 | `gemini-3-flash` | Supported | Resolves to Copilot's current `gemini-3-flash-preview` model. |
 
@@ -231,8 +232,9 @@ Reasoning effort is model-specific.
 | `gpt-5.4` | `low`, `medium`, `high`, `xhigh` | `medium` |
 | `gpt-5.3-codex` | `low`, `medium`, `high`, `xhigh` | `medium` |
 | `gpt-5.4-mini` | `none`, `low`, `medium` | `medium` |
+| `claude-opus-4.7` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` |
 
-If an unsupported effort value is sent for one of these models, the proxy falls back to that model's default `medium` instead of forwarding an invalid upstream request.
+If an unsupported effort value is sent for one of these models, the proxy falls back to that model's default behavior instead of forwarding an invalid upstream request.
 
 ### `settings.json`
 

@@ -13,6 +13,10 @@ const stripSnapshotSuffix = (modelId: string): string => {
     return "claude-sonnet-4"
   }
 
+  if (/^claude-opus-4-7-\d{8}$/.test(modelId)) {
+    return "claude-opus-4.7"
+  }
+
   if (modelId.startsWith("claude-opus-4-")) {
     return "claude-opus-4"
   }

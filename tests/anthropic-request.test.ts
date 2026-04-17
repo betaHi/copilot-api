@@ -74,10 +74,23 @@ const chatCompletionRequestSchema = z.object({
     .optional()
     .nullable(),
   stream: z.boolean().optional().nullable(),
+  thinking: z
+    .object({
+      type: z.enum(["enabled", "adaptive"]),
+      budget_tokens: z.number().int().optional(),
+    })
+    .optional()
+    .nullable(),
   temperature: z.number().min(0).max(2).optional().nullable(),
   top_p: z.number().min(0).max(1).optional().nullable(),
   tools: z.array(z.any()).optional(),
   tool_choice: z.union([z.string(), z.object({})]).optional(),
+  output_config: z
+    .object({
+      effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
+    })
+    .optional()
+    .nullable(),
   user: z.string().optional(),
 })
 
@@ -124,6 +137,23 @@ describe("Anthropic model resolution", () => {
     const openAIPayload = translateToOpenAI(anthropicPayload)
 
     expect(openAIPayload.model).toBe("claude-opus-4")
+  })
+
+  test("should resolve Claude Opus 4.7 snapshot aliases to the 4.7 Copilot model", () => {
+    state.models = {
+      object: "list",
+      data: [createModel("claude-opus-4.6"), createModel("claude-opus-4.7")],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "claude-opus-4-7-20260417",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.model).toBe("claude-opus-4.7")
   })
 
   test("should resolve Gemini 3.1 Pro alias to the preview Copilot model", () => {
@@ -186,6 +216,125 @@ describe("Anthropic to OpenAI translation logic", () => {
     expect(openAIPayload.reasoning_effort).toBe("high")
   })
 
+  test("should pass through Claude Opus 4.7 thinking blocks for enabled thinking", () => {
+    state.models = {
+      object: "list",
+      data: [createModel("claude-opus-4.7")],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.7",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+      thinking: {
+        type: "enabled",
+        budget_tokens: 16_000,
+      },
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.thinking).toEqual({ type: "adaptive" })
+    expect(openAIPayload.output_config).toEqual({ effort: "high" })
+    expect(openAIPayload.reasoning_effort).toBeUndefined()
+  })
+
+  test("should pass through Claude Opus 4.7 adaptive thinking", () => {
+    state.models = {
+      object: "list",
+      data: [createModel("claude-opus-4.7")],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.7",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+      thinking: {
+        type: "adaptive",
+      },
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.thinking).toEqual({ type: "adaptive" })
+    expect(openAIPayload.output_config).toBeUndefined()
+    expect(openAIPayload.reasoning_effort).toBeUndefined()
+  })
+
+  test("should map Claude Opus 4.7 reasoning_effort to output_config.effort", () => {
+    state.models = {
+      object: "list",
+      data: [createModel("claude-opus-4.7")],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.7",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+      reasoning_effort: "max",
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.thinking).toBeUndefined()
+    expect(openAIPayload.output_config).toEqual({ effort: "max" })
+    expect(openAIPayload.reasoning_effort).toBeUndefined()
+  })
+
+  test("should map Claude Opus 4.7 thinking budget tiers to effort buckets", () => {
+    state.models = {
+      object: "list",
+      data: [createModel("claude-opus-4.7")],
+    }
+
+    const cases = [
+      { budgetTokens: 1_024, expectedEffort: "low" },
+      { budgetTokens: 8_192, expectedEffort: "medium" },
+      { budgetTokens: 16_000, expectedEffort: "high" },
+      { budgetTokens: 32_000, expectedEffort: "xhigh" },
+    ] as const
+
+    for (const { budgetTokens, expectedEffort } of cases) {
+      const anthropicPayload: AnthropicMessagesPayload = {
+        model: "claude-opus-4.7",
+        messages: [{ role: "user", content: "Hello!" }],
+        max_tokens: 0,
+        thinking: {
+          type: "enabled",
+          budget_tokens: budgetTokens,
+        },
+      }
+
+      const openAIPayload = translateToOpenAI(anthropicPayload)
+
+      expect(openAIPayload.thinking).toEqual({ type: "adaptive" })
+      expect(openAIPayload.output_config).toEqual({ effort: expectedEffort })
+      expect(openAIPayload.reasoning_effort).toBeUndefined()
+    }
+  })
+
+  test("should not pass through thinking for other Claude models", () => {
+    state.models = {
+      object: "list",
+      data: [createModel("claude-opus-4.6")],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.6",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+      thinking: {
+        type: "adaptive",
+      },
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.thinking).toBeUndefined()
+    expect(openAIPayload.output_config).toBeUndefined()
+    expect(openAIPayload.reasoning_effort).toBeUndefined()
+  })
+
   test("should honor explicit reasoning effort aliases", () => {
     state.models = originalModels
 
@@ -200,7 +349,9 @@ describe("Anthropic to OpenAI translation logic", () => {
 
     expect(openAIPayload.reasoning_effort).toBe("xhigh")
   })
+})
 
+describe("Anthropic translation payload validation", () => {
   test("should translate minimal Anthropic payload to valid OpenAI payload", () => {
     state.models = originalModels
 
