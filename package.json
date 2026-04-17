@@ -1,6 +1,6 @@
 {
   "name": "betahi-copilot-api",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "GitHub Copilot proxy with OpenAI/Anthropic compatibility, GPT-5 and Gemini support for Claude Code.",
   "keywords": [
     "proxy",
