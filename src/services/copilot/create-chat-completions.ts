@@ -38,6 +38,10 @@ const getAllowedReasoningEfforts = (
 ): Array<
   Exclude<ChatCompletionsPayload["reasoning_effort"], null | undefined>
 > => {
+  if (modelId.startsWith("gpt-5.5")) {
+    return ["none", "low", "medium", "high", "xhigh"]
+  }
+
   if (modelId.startsWith("gpt-5.4-mini")) {
     return ["none", "low", "medium"]
   }

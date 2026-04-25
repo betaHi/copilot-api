@@ -215,6 +215,7 @@ New endpoints for monitoring your Copilot usage and quotas.
 | Model | Status | Notes |
 | ----- | ------ | ----- |
 | `gpt-5.4` | Supported | Uses the standard GPT-5 chat/completions path. |
+| `gpt-5.5` | Supported | Uses the standard GPT-5 chat/completions path and resolves upstream snapshots such as `gpt-5.5-2026-04-23`. |
 | `gpt-5.3-codex` | Supported | Uses the Responses API bridge internally. |
 | `gpt-5.4-mini` | Supported | Uses the Responses API bridge internally. |
 | `claude-opus-4.7` | Supported | Snapshot aliases such as `claude-opus-4-7-20260417` resolve to this model, with `low`, `medium`, `high`, `xhigh`, and `max` effort support. |
@@ -230,6 +231,7 @@ Reasoning effort is model-specific.
 | Model | Supported values | Default |
 | ----- | ---------------- | ------- |
 | `gpt-5.4` | `low`, `medium`, `high`, `xhigh` | `medium` |
+| `gpt-5.5` | `none`, `low`, `medium`, `high`, `xhigh` | `medium` |
 | `gpt-5.3-codex` | `low`, `medium`, `high`, `xhigh` | `medium` |
 | `gpt-5.4-mini` | `none`, `low`, `medium` | `medium` |
 | `claude-opus-4.7` | `low`, `medium`, `high`, `xhigh`, `max` | `medium` |

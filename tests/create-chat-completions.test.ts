@@ -13,6 +13,10 @@ state.copilotToken = "test-token"
 state.vsCodeVersion = "1.0.0"
 state.accountType = "individual"
 
+const isolatedHome = path.join(os.tmpdir(), "copilot-api-test-home")
+await mkdir(isolatedHome, { recursive: true })
+process.env.HOME = isolatedHome
+
 const createMockResponse = (jsonBody: unknown, ok: boolean = true) => ({
   ok,
   status: ok ? 200 : 400,
@@ -41,10 +45,8 @@ const fetchMock = mock(
 afterEach(() => {
   fetchMock.mockClear()
   delete process.env.COPILOT_REASONING_EFFORT
-  process.env.HOME = originalHome
+  process.env.HOME = isolatedHome
 })
-
-const originalHome = process.env.HOME
 
 test("sets X-Initiator to agent if tool/assistant present", async () => {
   const payload: ChatCompletionsPayload = {
@@ -94,6 +96,45 @@ test("uses max_completion_tokens for GPT-5 family models", async () => {
 
   expect(body.max_completion_tokens).toBe(512)
   expect(body.max_tokens).toBeUndefined()
+})
+
+test("uses max_completion_tokens for gpt-5.5 with explicit reasoning effort", async () => {
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "gpt-5.5",
+    max_tokens: 384,
+    reasoning_effort: "high",
+  }
+
+  await createChatCompletions(payload)
+
+  expect(fetchMock).toHaveBeenCalled()
+  const body = JSON.parse(
+    (fetchMock.mock.calls[0][1] as { body: string }).body,
+  ) as Record<string, unknown>
+
+  expect(body.max_completion_tokens).toBe(384)
+  expect(body.max_tokens).toBeUndefined()
+  expect(body.reasoning_effort).toBe("high")
+})
+
+test("passes through reasoning_effort none for gpt-5.5", async () => {
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "gpt-5.5",
+    max_tokens: 128,
+    reasoning_effort: "none",
+  }
+
+  await createChatCompletions(payload)
+
+  expect(fetchMock).toHaveBeenCalled()
+  const body = JSON.parse(
+    (fetchMock.mock.calls[0][1] as { body: string }).body,
+  ) as Record<string, unknown>
+
+  expect(body.max_completion_tokens).toBe(128)
+  expect(body.reasoning_effort).toBe("none")
 })
 
 test("uses max_completion_tokens for gpt-5.3-codex", async () => {
@@ -269,6 +310,42 @@ test("keeps max_tokens for non GPT-5 models", async () => {
 
   expect(body.max_tokens).toBe(256)
   expect(body.max_completion_tokens).toBeUndefined()
+})
+
+test("keeps max_tokens and omits reasoning_effort for gemini-3.1-pro-preview", async () => {
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "gemini-3.1-pro-preview",
+    max_tokens: 256,
+  }
+
+  await createChatCompletions(payload)
+
+  const body = JSON.parse(
+    (fetchMock.mock.calls[0][1] as { body: string }).body,
+  ) as Record<string, unknown>
+
+  expect(body.max_tokens).toBe(256)
+  expect(body.max_completion_tokens).toBeUndefined()
+  expect(body.reasoning_effort).toBeUndefined()
+})
+
+test("keeps max_tokens and omits reasoning_effort for gemini-3-flash-preview", async () => {
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "gemini-3-flash-preview",
+    max_tokens: 256,
+  }
+
+  await createChatCompletions(payload)
+
+  const body = JSON.parse(
+    (fetchMock.mock.calls[0][1] as { body: string }).body,
+  ) as Record<string, unknown>
+
+  expect(body.max_tokens).toBe(256)
+  expect(body.max_completion_tokens).toBeUndefined()
+  expect(body.reasoning_effort).toBeUndefined()
 })
 
 test("passes through explicit reasoning_effort for GPT-5 family models", async () => {
@@ -554,6 +631,42 @@ test("uses COPILOT_REASONING_EFFORT from Claude settings.json", async () => {
     ) as Record<string, unknown>
 
     expect(body.reasoning_effort).toBe("xhigh")
+  } finally {
+    await rm(tempHome, { recursive: true, force: true })
+  }
+})
+
+test("uses COPILOT_REASONING_EFFORT from Claude settings.json for gpt-5.5", async () => {
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), "claude-settings-"))
+  const claudeDirectory = path.join(tempHome, ".claude")
+
+  try {
+    await mkdir(claudeDirectory, { recursive: true })
+    await writeFile(
+      path.join(claudeDirectory, "settings.json"),
+      JSON.stringify({
+        env: {
+          COPILOT_REASONING_EFFORT: "none",
+        },
+      }),
+    )
+
+    process.env.HOME = tempHome
+
+    const payload: ChatCompletionsPayload = {
+      messages: [{ role: "user", content: "hi" }],
+      model: "gpt-5.5",
+      max_tokens: 128,
+    }
+
+    await createChatCompletions(payload)
+
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body,
+    ) as Record<string, unknown>
+
+    expect(body.max_completion_tokens).toBe(128)
+    expect(body.reasoning_effort).toBe("none")
   } finally {
     await rm(tempHome, { recursive: true, force: true })
   }

@@ -122,6 +122,23 @@ describe("Anthropic model resolution", () => {
     expect(openAIPayload.model).toBe("gpt-5")
   })
 
+  test("should resolve GPT-5.5 aliases to the GPT-5 Copilot model", () => {
+    state.models = {
+      object: "list",
+      data: [createModel("gpt-5"), createModel("gpt-5-mini")],
+    }
+
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "gpt-5.5",
+      messages: [{ role: "user", content: "Hello!" }],
+      max_tokens: 0,
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.model).toBe("gpt-5")
+  })
+
   test("should resolve Claude snapshot aliases to the base Copilot model", () => {
     state.models = {
       object: "list",
