@@ -46,7 +46,6 @@ export interface Model {
   name: string
   object: string
   preview: boolean
-  supported_endpoints?: Array<string>
   vendor: string
   version: string
   policy?: {
