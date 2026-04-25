@@ -212,17 +212,19 @@ New endpoints for monitoring your Copilot usage and quotas.
 
 ## **GPT, Claude Opus 4.7, and Gemini Support**
 
-| Model | Status | Notes |
-| ----- | ------ | ----- |
-| `gpt-5.4` | Supported | Uses the standard GPT-5 chat/completions path. |
-| `gpt-5.5` | Supported | Uses the standard GPT-5 chat/completions path and resolves upstream snapshots such as `gpt-5.5-2026-04-23`. |
-| `gpt-5.3-codex` | Supported | Uses the Responses API bridge internally. |
-| `gpt-5.4-mini` | Supported | Uses the Responses API bridge internally. |
-| `claude-opus-4.7` | Supported | Snapshot aliases such as `claude-opus-4-7-20260417` resolve to this model, with `low`, `medium`, `high`, `xhigh`, and `max` effort support. |
-| `gemini-3.1-pro` | Supported | Resolves to Copilot's current `gemini-3.1-pro-preview` model. |
-| `gemini-3-flash` | Supported | Resolves to Copilot's current `gemini-3-flash-preview` model. |
+| Model | Status | Reported context window | Notes |
+| ----- | ------ | ----------------------- | ----- |
+| `gpt-5.4` | Supported | `400K` | Uses the standard GPT-5 chat/completions path. |
+| `gpt-5.5` | Supported | `400K` | Uses the standard GPT-5 chat/completions path and resolves upstream snapshots such as `gpt-5.5-2026-04-23`. |
+| `gpt-5.3-codex` | Supported | `400K` | Uses the Responses API bridge internally. |
+| `gpt-5.4-mini` | Supported | `400K` | Uses the Responses API bridge internally. |
+| `claude-opus-4.7` | Supported | `200K` | Snapshot aliases such as `claude-opus-4-7-20260417` resolve to this model, with `low`, `medium`, `high`, `xhigh`, and `max` effort support. |
+| `gemini-3.1-pro` | Supported | `200K` | Resolves to Copilot's current `gemini-3.1-pro-preview` model. |
+| `gemini-3-flash` | Supported | `128K` | Resolves to Copilot's current `gemini-3-flash-preview` model. |
 
 Gemini preview IDs can also be used directly, for example `gemini-3.1-pro-preview` and `gemini-3-flash-preview`.
+
+Context window values above are the current limits reported by `/v1/models` on this proxy. Treat them as model metadata, not as a guarantee that every client UI will display the same value or that the full window is always usable as prompt tokens in practice.
 
 ### Reasoning Effort Matrix
 
