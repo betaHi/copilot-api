@@ -1,0 +1,1 @@
+[91mError: No Claude session messages found for session 'cd7414bc-8f07-4f80-8a69-3aa17c161add'. Retry with --directory <claude-session-dir> if the SDK cannot find this session in its default lookup path[0m
