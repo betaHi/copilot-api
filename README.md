@@ -9,7 +9,8 @@
 
 - **Codex CLI** support (auto-writes `~/.codex/config.toml`)
 - **Claude Code** support (no flags needed)
-- [Usage Viewer](https://betahi.github.io/copilot-api?endpoint=http://127.0.0.1:4242/usage), CORS, rate limiting
+- **Web Search** support
+- **End-to-end reasoning** support
 - End-to-end tested with the real Codex / Claude CLIs
 
 ## Migration
