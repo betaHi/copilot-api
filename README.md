@@ -12,6 +12,7 @@
 - **Claude Code** support (no flags needed)
 - **Web Search** support
 - **End-to-end reasoning** support
+- **Tool call compatibility.** Adapts MCP tool names and tool call payloads to each upstream model's constraints
 - End-to-end tested with the real Codex / Claude CLIs
 
 ## Migration
